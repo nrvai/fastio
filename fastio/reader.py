@@ -13,7 +13,7 @@ __all__ = (
 
 
 class Read:
-    def __init__(self: Self, size: Optional[int]) -> None:
+    def __init__(self: Self, size: Optional[int] = None) -> None:
         self.size = size
 
 
