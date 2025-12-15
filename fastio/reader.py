@@ -1,4 +1,4 @@
-from typing import Generator, Optional, Protocol, Self, Union
+from typing import Callable, Generator, Optional, Self, Union
 
 from .byte_buffer import ByteBuffer
 
@@ -18,6 +18,8 @@ class Read:
 
 
 class Result[T]:
+    __match_args__ = ("value",)
+
     def __init__(self: Self, value: T) -> None:
         self.value = value
 
@@ -29,8 +31,4 @@ type Signal[T] = Union[
 
 
 type Reading[T] = Generator[Signal[T]]
-
-
-class Reader[T](Protocol):
-    def read(self: Self, buffer: ByteBuffer) -> Reading[T]:
-        ...
+type Reader[T] = Callable[[ByteBuffer], Reading[T]]

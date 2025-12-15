@@ -1,0 +1,46 @@
+from .reader import Read, Reader, Result
+
+
+__all__ = (
+    "read_exact",
+    "read_lines"
+)
+
+
+def read_exact(total_size: int) -> Reader[memoryview]:
+    def read(buffer):
+        counter = total_size
+
+        while counter > 0:
+            remaining = buffer.remaining
+
+            if remaining == 0:
+                yield Read()
+                continue
+
+            current_size = counter if counter <= remaining else remaining
+
+            yield buffer.read(current_size)
+            counter -= current_size
+
+    return read
+
+
+def read_lines(delimiter: bytes) -> Reader[memoryview]:
+    def read(buffer):
+        while True:
+            position = buffer.find(delimiter)
+
+            if position is None:
+                yield Read()
+                continue
+
+            line = buffer.read_to(position)
+            buffer.skip(len(delimiter))
+
+            if line == b"":
+                return
+
+            yield Result(line)
+
+    return read
