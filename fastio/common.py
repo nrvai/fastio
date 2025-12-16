@@ -1,4 +1,5 @@
-from .reader import Read, Reader, Result
+from .byte_buffer import ByteBuffer
+from .reader import Read, Reader, Reading, Result
 
 
 __all__ = (
@@ -8,7 +9,7 @@ __all__ = (
 
 
 def read_exact(total_size: int) -> Reader[memoryview]:
-    def read(buffer):
+    def read(buffer: ByteBuffer) -> Reading[memoryview]:
         counter = total_size
 
         while counter > 0:
@@ -20,14 +21,17 @@ def read_exact(total_size: int) -> Reader[memoryview]:
 
             current_size = counter if counter <= remaining else remaining
 
-            yield buffer.read(current_size)
+            value = buffer.read(current_size)
+
+            yield Result(value)
+
             counter -= current_size
 
     return read
 
 
 def read_lines(delimiter: bytes) -> Reader[memoryview]:
-    def read(buffer):
+    def read(buffer: ByteBuffer) -> Reading[memoryview]:
         while True:
             position = buffer.find(delimiter)
 
