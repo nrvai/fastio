@@ -60,3 +60,7 @@ class ByteBuffer:
     @classmethod
     def empty(cls: type[Self]) -> Self:
         return cls(bytearray())
+
+    @classmethod
+    def of(cls: type[Self], data: bytes) -> Self:
+        return cls(bytearray(data))
