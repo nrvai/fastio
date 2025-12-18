@@ -1,25 +1,108 @@
-from .byte_buffer import ByteBuffer
+from typing import Iterable, Optional, Self, Union
+
+from .byte_buffer import ByteBuffer, BytesLike
 from .reader import Read, Reader, Reading, Result
+from .writer import Drain, Writer, Writing
 
 
 __all__ = (
-    "read_exact",
-    "read_lines"
+    "ArrayByteBuffer",
+
+    "read_bytes",
+    "read_lines",
+    "write_bytes",
+    "write_lines"
 )
 
 
-def read_exact(total_size: int) -> Reader[memoryview]:
+class ArrayByteBuffer:
+    def __init__(
+        self: Self,
+        data: bytearray,
+        read_position: int,
+        write_position: int
+    ) -> None:
+        self.data = data
+        self.read_position = read_position
+        self.write_position = write_position
+
+    @property
+    def readable(self: Self) -> int:
+        return self.write_position - self.read_position
+
+    @property
+    def size(self: Self) -> int:
+        return len(self.data)
+
+    @property
+    def writable(self: Self) -> int:
+        return self.size - self.write_position
+
+    def find(self: Self, value: bytes) -> Optional[int]:
+        start = self.read_position
+        stop = self.write_position
+
+        position = self.data.find(value, start, stop)
+
+        if position == -1:
+            return None
+
+        return position - self.read_position
+
+    def read(self: Self, size: Optional[int] = None) -> memoryview:
+        if size is None:
+            size = self.readable
+
+        view = memoryview(self.data)[
+            self.read_position:self.read_position + size
+        ]
+
+        self.read_position += size
+
+        return view
+
+    def resize(self: Self, size: int) -> None:
+        if self.read_position > size:
+            self.read_position = 0
+
+        if self.write_position > size:
+            self.write_position = size
+
+        self.data.resize(size)
+
+    def skip(self: Self, size: int) -> None:
+        self.read_position += size
+
+    def write(self: Self, data: BytesLike) -> None:
+        self.data[self.write_position:self.write_position + len(data)] = data
+
+        self.write_position += len(data)
+
+    @classmethod
+    def allocate(cls: type[Self], size: int) -> Self:
+        return cls(bytearray(b"\x00" * size), 0, 0)
+
+    @classmethod
+    def empty(cls: type[Self]) -> Self:
+        return cls(bytearray(), 0, 0)
+
+    @classmethod
+    def of(cls: type[Self], data: BytesLike) -> Self:
+        return cls(bytearray(data), 0, len(data))
+
+
+def read_bytes(total_size: int) -> Reader[memoryview]:
     def read(buffer: ByteBuffer) -> Reading[memoryview]:
         counter = total_size
 
         while counter > 0:
-            remaining = buffer.remaining
+            readable = buffer.readable
 
-            if remaining == 0:
+            if readable == 0:
                 yield Read()
                 continue
 
-            current_size = counter if counter <= remaining else remaining
+            current_size = counter if counter <= readable else readable
 
             value = buffer.read(current_size)
 
@@ -33,13 +116,13 @@ def read_exact(total_size: int) -> Reader[memoryview]:
 def read_lines(delimiter: bytes) -> Reader[memoryview]:
     def read(buffer: ByteBuffer) -> Reading[memoryview]:
         while True:
-            position = buffer.find(delimiter)
+            size = buffer.find(delimiter)
 
-            if position is None:
+            if size is None:
                 yield Read()
                 continue
 
-            line = buffer.read_to(position)
+            line = buffer.read(size)
             buffer.skip(len(delimiter))
 
             if line == b"":
@@ -48,3 +131,27 @@ def read_lines(delimiter: bytes) -> Reader[memoryview]:
             yield Result(line)
 
     return read
+
+
+def write_bytes(data: BytesLike, buffer: ByteBuffer) -> Writing:
+    view = memoryview(data)
+
+    while view:
+        if buffer.writable == 0:
+            yield Drain(len(view))
+            continue
+
+        size = min(buffer.writable, len(view))
+        buffer.write(view[:size])
+        view = view[size:]
+
+
+def write_lines(delimiter: bytes) -> Writer[Iterable[BytesLike]]:
+    def write(lines: Iterable[BytesLike], buffer: ByteBuffer) -> Writing:
+        for line in lines:
+            yield from write_bytes(line, buffer)
+            yield from write_bytes(delimiter, buffer)
+
+        yield from write_bytes(delimiter, buffer)
+
+    return write

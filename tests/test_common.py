@@ -4,9 +4,9 @@ from textwrap import dedent
 
 import pytest
 
-from fastio.byte_buffer import ByteBuffer
-from fastio.common import read_lines
+from fastio.common import ArrayByteBuffer, read_lines, write_lines
 from fastio.reader import Read, Result
+from fastio.writer import Drain
 
 
 def partition(items, size):
@@ -42,18 +42,49 @@ def test_line_reader(text):
     data = dedent(text[1:]).encode()
 
     parts = iter(partition(data, 8))
-    buffer = ByteBuffer.empty()
+    buffer = ArrayByteBuffer.empty()
     reader = read_lines(b"\n")
     lines = []
 
     for signal in reader(buffer):
         match signal:
             case Read():
-                buffer.extend(next(parts))
+                buffer.write(next(parts))
             case Result(line):
                 lines.append(bytes(line))
                 line.release()
 
     result = b"\n".join(lines) + b"\n\n"
+
+    assert result == data
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        """
+        RTSP/1.0 200 OK
+        CSeq: 1
+        Public: DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE
+
+        """
+    ]
+)
+def test_line_writer(text):
+    size = 8
+    buffer = ArrayByteBuffer.allocate(size)
+
+    data = dedent(text[1:]).encode()
+    lines = data.split(b"\n")[:-2]
+    writer = write_lines(b"\n")
+
+    for signal in writer(lines, buffer):
+        match signal:
+            case Drain():
+                size *= 2
+
+                buffer.resize(size)
+
+    result = buffer.read()
 
     assert result == data

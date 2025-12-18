@@ -1,66 +1,36 @@
-from typing import Optional, Self
+from typing import Optional, Protocol, Self, Union
 
 
 __all__ = (
     "ByteBuffer",
+    "BytesLike"
 )
 
 
-class ByteBuffer:
-    def __init__(self: Self, data: bytearray, position: int = 0) -> None:
-        self.data = data
-        self.position = position
+type BytesLike = Union[bytearray, bytes, memoryview]
 
+
+class ByteBuffer(Protocol):
     @property
-    def remaining(self: Self) -> int:
-        return self.size - self.position
+    def readable(self: Self) -> int:
+        ...
 
     @property
     def size(self: Self) -> int:
-        return len(self.data)
+        ...
 
-    def extend(self: Self, data: bytearray) -> None:
-        self.data.extend(data)
+    @property
+    def writable(self: Self) -> int:
+        ...
 
-    def find(
-        self: Self,
-        value: bytes,
-        start: Optional[int] = None,
-        stop: Optional[int] = None
-    ) -> Optional[int]:
-        start = self.position if start is None else start
-
-        position = self.data.find(value, start, stop)
-
-        return None if position == -1 else position
+    def find(self: Self, value: bytes) -> Optional[int]:
+        ...
 
     def read(self: Self, size: Optional[int] = None) -> memoryview:
-        if size is None:
-            size = self.remaining
-
-        view = memoryview(self.data)[self.position:self.position + size]
-
-        self.position += size
-
-        return view
-
-    def read_to(self: Self, position: int) -> memoryview:
-        view = memoryview(self.data)[self.position:position]
-
-        self.position = position
-
-        return view
+        ...
 
     def skip(self: Self, size: int) -> None:
-        self.position += size
+        ...
 
-    def skip_to(self: Self, position: int) -> None:
-        self.position = position
-
-    @classmethod
-    def empty(cls: type[Self]) -> Self:
-        return cls(bytearray())
-
-    @classmethod
-    def of(cls: type[Self], data: bytes) -> Self:
-        return cls(bytearray(data))
+    def write(self: Self, data: BytesLike) -> None:
+        ...

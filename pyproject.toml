@@ -3,7 +3,7 @@ name = "fastio"
 version = "0.1.0"
 description = "Zero-overhead abstractions for writing blazing fast IO applications in Python"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = []
 
 [dependency-groups]
