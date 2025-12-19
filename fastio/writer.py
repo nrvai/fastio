@@ -1,6 +1,24 @@
-from typing import Callable, Generator, Optional
+from typing import Callable, Generator, Optional, Self, Union
 
 from .byte_buffer import ByteBuffer
+
+
+__all__ = (
+    "Accept",
+    "Close",
+    "Drain",
+    "Signal",
+    "Writing",
+    "Writer"
+)
+
+
+class Accept:
+    pass
+
+
+class Close(BaseException):
+    pass
 
 
 class Drain:
@@ -10,6 +28,6 @@ class Drain:
         self.size = size
 
 
-type Signal = Drain
-type Writing = Generator[Signal]
-type Writer[T] = Callable[[T, ByteBuffer], Writing]
+type Signal = Union[Accept, Drain]
+type Writing[T] = Generator[Signal, Optional[T], None]
+type Writer[T] = Callable[[ByteBuffer], Writing[T]]

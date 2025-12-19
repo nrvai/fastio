@@ -2,7 +2,7 @@ from typing import Iterable, Optional, Self, Union
 
 from .byte_buffer import ByteBuffer, BytesLike
 from .reader import Read, Reader, Reading, Result
-from .writer import Drain, Writer, Writing
+from .writer import Close, Drain, Writer, Writing, Signal as WriterSignal
 
 
 __all__ = (
@@ -91,6 +91,25 @@ class ArrayByteBuffer:
         return cls(bytearray(data), 0, len(data))
 
 
+def drain[T](
+    writing: Writing[T],
+    data: Optional[T] = None,
+    close: bool = False
+) -> Writing[T]:
+    if close:
+        try:
+            signal = writing.throw(Close)
+        except StopIteration:
+            return
+    else:
+        signal = writing.send(data)
+
+    while not isinstance(singal, Accept):
+        yield signal
+
+        signal = next(writing)
+
+
 def read_bytes(total_size: int) -> Reader[memoryview]:
     def read(buffer: ByteBuffer) -> Reading[memoryview]:
         counter = total_size
@@ -133,25 +152,38 @@ def read_lines(delimiter: bytes) -> Reader[memoryview]:
     return read
 
 
-def write_bytes(data: BytesLike, buffer: ByteBuffer) -> Writing:
-    view = memoryview(data)
+def write_bytes(buffer: ByteBuffer) -> Writing[BytesLike]:
+    while True:
+        try:
+            data = yield Accept()
+        except Close:
+            return
 
-    while view:
-        if buffer.writable == 0:
-            yield Drain(len(view))
-            continue
+        view = memoryview(data)
 
-        size = min(buffer.writable, len(view))
-        buffer.write(view[:size])
-        view = view[size:]
+        while view:
+            if buffer.writable == 0:
+                yield Drain(len(view))
+                continue
+
+            size = min(buffer.writable, len(view))
+            buffer.write(view[:size])
+            view = view[size:]
 
 
-def write_lines(delimiter: bytes) -> Writer[Iterable[BytesLike]]:
-    def write(lines: Iterable[BytesLike], buffer: ByteBuffer) -> Writing:
-        for line in lines:
-            yield from write_bytes(line, buffer)
-            yield from write_bytes(delimiter, buffer)
+def write_lines(delimiter: bytes) -> Writer[BytesLike]:
+    def write(buffer: ByteBuffer) -> Writing[BytesLike]:
+        writing = write_bytes(buffer)
+        signal = next(writing)
 
-        yield from write_bytes(delimiter, buffer)
+        while True:
+            try:
+                data = yield Accept()
 
-    return write
+                yield from drain(writing, data=data)
+                yield from drain(writing, data=delimiter)
+            except Close:
+                yield from drain(writing, data=delimiter)
+                yield from drain(writing, close=True)
+
+                return

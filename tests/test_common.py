@@ -6,7 +6,7 @@ import pytest
 
 from fastio.common import ArrayByteBuffer, read_lines, write_lines
 from fastio.reader import Read, Result
-from fastio.writer import Drain
+from fastio.writer import Accept, Drain
 
 
 def partition(items, size):
@@ -75,15 +75,23 @@ def test_line_writer(text):
     buffer = ArrayByteBuffer.allocate(size)
 
     data = dedent(text[1:]).encode()
-    lines = data.split(b"\n")[:-2]
+    lines = iter(data.split(b"\n")[:-2])
     writer = write_lines(b"\n")
+    writing = writer(buffer)
+    signal = next(writing)
 
-    for signal in writer(lines, buffer):
+    while True:
         match signal:
+            case Accept():
+                try:
+                    signal = writing.send(next(lines))
+                except StopIteration:
+                    signal = writing.throw(StopIteration)
             case Drain():
                 size *= 2
 
                 buffer.resize(size)
+                signal = next(writing)
 
     result = buffer.read()
 
