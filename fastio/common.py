@@ -1,8 +1,19 @@
-from typing import Iterable, Optional, Self, Union
+from typing import AsyncIterable, Callable, Iterable, Optional, Self
 
 from .byte_buffer import ByteBuffer, BytesLike
 from .reader import Read, Reader, Reading, Result
-from .writer import Close, Drain, Writer, Writing, Signal as WriterSignal
+from .writer import (
+    Accept,
+    AsyncWriter,
+    AsyncWriting,
+    Close,
+    Drain,
+    Writer,
+    Writing,
+
+    close,
+    push
+)
 
 
 __all__ = (
@@ -91,25 +102,6 @@ class ArrayByteBuffer:
         return cls(bytearray(data), 0, len(data))
 
 
-def drain[T](
-    writing: Writing[T],
-    data: Optional[T] = None,
-    close: bool = False
-) -> Writing[T]:
-    if close:
-        try:
-            signal = writing.throw(Close)
-        except StopIteration:
-            return
-    else:
-        signal = writing.send(data)
-
-    while not isinstance(singal, Accept):
-        yield signal
-
-        signal = next(writing)
-
-
 def read_bytes(total_size: int) -> Reader[memoryview]:
     def read(buffer: ByteBuffer) -> Reading[memoryview]:
         counter = total_size
@@ -156,6 +148,8 @@ def write_bytes(buffer: ByteBuffer) -> Writing[BytesLike]:
     while True:
         try:
             data = yield Accept()
+
+            assert data is not None
         except Close:
             return
 
@@ -174,16 +168,54 @@ def write_bytes(buffer: ByteBuffer) -> Writing[BytesLike]:
 def write_lines(delimiter: bytes) -> Writer[BytesLike]:
     def write(buffer: ByteBuffer) -> Writing[BytesLike]:
         writing = write_bytes(buffer)
-        signal = next(writing)
+        next(writing)
 
         while True:
             try:
                 data = yield Accept()
 
-                yield from drain(writing, data=data)
-                yield from drain(writing, data=delimiter)
+                yield from push(writing, data)
+                yield from push(writing, delimiter) # pyright: ignore [reportReturnType]
             except Close:
-                yield from drain(writing, data=delimiter)
-                yield from drain(writing, close=True)
+                yield from push(writing, delimiter) # pyright: ignore [reportReturnType]
+                yield from close(writing)
 
                 return
+
+    return write
+
+
+def write_iterable[T](items: Iterable[T]) -> Callable[[Writer[T]], Writer[T]]:
+    def wrap(writer: Writer[T]) -> Writer[T]:
+        def write(buffer: ByteBuffer) -> Writing[T]:
+            writing = writer(buffer)
+            next(writing)
+
+            for item in items:
+                yield from push(writing, item)
+
+            yield from close(writing)
+
+        return write
+
+    return wrap
+
+
+def write_async_iterable[T](
+    items: AsyncIterable[T]
+) -> Callable[[Writer[T]], AsyncWriter[T]]:
+    def wrap(writer: Writer[T]) -> AsyncWriter[T]:
+        async def write(buffer: ByteBuffer) -> AsyncWriting[T]:
+            writing = writer(buffer)
+            next(writing)
+
+            async for item in items:
+                for signal in push(writing, item):
+                    yield signal
+
+            for signal in close(writing):
+                yield signal
+
+        return write
+
+    return wrap

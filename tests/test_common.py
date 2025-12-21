@@ -4,7 +4,13 @@ from textwrap import dedent
 
 import pytest
 
-from fastio.common import ArrayByteBuffer, read_lines, write_lines
+from fastio.common import (
+    ArrayByteBuffer,
+    read_lines,
+    write_lines,
+    write_iterable
+)
+
 from fastio.reader import Read, Result
 from fastio.writer import Accept, Drain
 
@@ -75,23 +81,14 @@ def test_line_writer(text):
     buffer = ArrayByteBuffer.allocate(size)
 
     data = dedent(text[1:]).encode()
-    lines = iter(data.split(b"\n")[:-2])
-    writer = write_lines(b"\n")
+    lines = data.split(b"\n")[:-2]
+    writer = write_iterable(lines)(write_lines(b"\n"))
     writing = writer(buffer)
-    signal = next(writing)
 
-    while True:
-        match signal:
-            case Accept():
-                try:
-                    signal = writing.send(next(lines))
-                except StopIteration:
-                    signal = writing.throw(StopIteration)
-            case Drain():
-                size *= 2
+    for signal in writing:
+        size *= 2
 
-                buffer.resize(size)
-                signal = next(writing)
+        buffer.resize(size)
 
     result = buffer.read()
 
